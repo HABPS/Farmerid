@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Naya Password - Agri Record</title>
+<link rel="stylesheet" href="app.css">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<div class="auth-wrap">
+<div class="box">
+<div class="hd"><h1>Naya Password</h1><p>Email ke link se yahan aaye hain.</p></div>
+<div class="bd" id="bd">
+<form id="f">
+<label for="pw">Naya password</label>
+<input id="pw" type="password" required minlength="8" autocomplete="new-password" placeholder="Kam se kam 8 akshar">
+<label for="pw2">Dobara likhein</label>
+<input id="pw2" type="password" required minlength="8" autocomplete="new-password">
+<button class="btn" id="go" type="submit">Password badlein</button>
+<div class="msg" id="msg"></div>
+<div class="links"><span></span><a href="login.html">Login par jayein</a></div>
+</form>
+</div>
+</div>
+</div>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  function show(t,k){var m=$('msg');m.className='msg '+k;m.textContent=t}
+  if(!APP.init()){$('bd').innerHTML=APP.setupHtml;return}
+  $('f').addEventListener('submit',async function(e){
+    e.preventDefault();
+    var pw=$('pw').value;
+    if(pw.length<8)return show('Password kam se kam 8 akshar ka rakhein.','err');
+    if(pw!==$('pw2').value)return show('Dono password ek jaise nahi hain.','err');
+    var s=await APP.sb.auth.getSession();
+    if(!(s.data&&s.data.session))return show('Link purana ho gaya hai. Login page par "Password bhool gaye?" se naya link mangwayein.','err');
+    var b=$('go');b.disabled=true;
+    try{
+      var r=await APP.sb.auth.updateUser({password:pw});
+      if(r.error)throw r.error;
+      await APP.sb.auth.signOut();
+      show('Password badal gaya. Ab naye password se login karein.','ok');
+      $('f').reset();
+    }catch(err){show(APP.err(err),'err')}
+    b.disabled=false;
+  });
+})();
+</script>
+</body>
+</html>

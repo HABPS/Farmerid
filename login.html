@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Login - Agri Record</title>
+<link rel="stylesheet" href="app.css">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<div class="auth-wrap">
+<div class="box">
+<div class="hd"><h1>Agri Record - Login</h1><p>Farmer ID Card Maker</p></div>
+<div class="bd" id="bd">
+<form id="f" autocomplete="on">
+<label for="email">Email</label>
+<input id="email" type="email" autocomplete="username" required placeholder="aap@example.com">
+<label for="pw">Password</label>
+<input id="pw" type="password" autocomplete="current-password" required placeholder="Password">
+<button class="btn" id="go" type="submit">Login</button>
+<div class="msg" id="msg"></div>
+<div class="links"><button type="button" class="linkbtn" id="forgot">Password bhool gaye?</button><a href="register.html">Naya account banayein</a></div>
+</form>
+</div>
+</div>
+</div>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  function show(t,k){var m=$('msg');m.className='msg '+k;m.textContent=t}
+  if(!APP.init()){$('bd').innerHTML=APP.setupHtml;return}
+  var m=new URLSearchParams(location.search).get('m');
+  if(m==='pending')show('Aapka account abhi admin ke approval ka intezaar kar raha hai. Approve hone par login kar payenge.','info');
+  if(m==='blocked')show('Aapka account band (block) hai. Admin se sampark karein.','err');
+  APP.profile().then(function(p){if(p&&p.status==='approved')location.replace('index.html')});
+  $('f').addEventListener('submit',async function(e){
+    e.preventDefault();
+    var b=$('go');b.disabled=true;show('Login ho raha hai…','info');
+    try{
+      var r=await APP.sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('pw').value});
+      if(r.error)throw r.error;
+      var p=await APP.profile();
+      if(p&&p.status==='approved'){location.replace('index.html');return}
+      await APP.sb.auth.signOut();
+      if(p&&p.status==='blocked')show('Aapka account band (block) hai. Admin se sampark karein.','err');
+      else show('Aapka account abhi admin ke approval ka intezaar kar raha hai. Approve hone par login kar payenge.','info');
+    }catch(err){show(APP.err(err),'err')}
+    b.disabled=false;
+  });
+  $('forgot').addEventListener('click',async function(){
+    var em=$('email').value.trim();
+    if(!em){show('Pehle upar email likhein, phir "Password bhool gaye?" dabayein.','err');return}
+    try{
+      var r=await APP.sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname.replace(/[^\/]*$/,'')+'reset.html'});
+      if(r.error)throw r.error;
+      show('Password badalne ka link email par bhej diya hai (spam folder bhi dekhein).','ok');
+    }catch(err){show(APP.err(err),'err')}
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin Panel - Agri Record</title>
+<link rel="stylesheet" href="app.css">
+<style>html.gate body{visibility:hidden}</style>
+<script>document.documentElement.classList.add('gate')</script>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<div class="topbar">
+<b>Agri Record - Admin Panel</b>
+<div class="r"><span id="me"></span><a href="index.html">Card Maker</a><button id="logout" type="button">Logout</button></div>
+</div>
+<div class="wrap">
+<div class="stats" id="stats"></div>
+<div class="tabs">
+<button data-tab="users" class="on" type="button">Users <span class="badge" id="pendBadge" style="display:none"></span></button>
+<button data-tab="logs" type="button">Card log</button>
+</div>
+
+<section id="tab-users">
+<div class="bar">
+<select id="uStatus"><option value="">Sab status</option><option value="pending">Pending (approval baki)</option><option value="approved">Approved</option><option value="blocked">Blocked</option></select>
+<input id="uSearch" placeholder="Naam, shop, mobile ya email search">
+<span class="sp"></span>
+<button id="reload" type="button">Refresh</button>
+</div>
+<div class="tbl"><table><thead><tr><th>Naam</th><th>CSC / Shop</th><th>Mobile</th><th>Email</th><th>Registered</th><th>Cards</th><th>Status</th><th>Role</th><th>Action</th></tr></thead><tbody id="uBody"></tbody></table></div>
+</section>
+
+<section id="tab-logs" style="display:none">
+<div class="bar">
+<input id="lSearch" placeholder="Farmer ID, naam, mobile ya operator">
+<input id="lFrom" type="date" title="Is date se">
+<input id="lTo" type="date" title="Is date tak">
+<select id="lType"><option value="">Sab type</option><option value="jpg">JPG</option><option value="pdf">PDF</option><option value="pvc">PVC</option><option value="print">Print</option></select>
+<span class="sp"></span>
+<button id="csv" type="button">CSV download</button>
+</div>
+<div class="tbl"><table><thead><tr><th>Date / Time</th><th>Operator</th><th>CSC / Shop</th><th>Farmer ID</th><th>Farmer ka naam</th><th>Mobile</th><th>Type</th></tr></thead><tbody id="lBody"></tbody></table></div>
+<div class="hint" style="margin-top:8px">Card log mein Aadhaar number save nahi hota.</div>
+</section>
+</div>
+
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)},E=APP.esc;
+  var S={me:null,profiles:[],logs:[]};
+  function gateMsg(h){var d=document.createElement('div');d.className='auth-wrap';d.innerHTML='<div class="box"><div class="bd">'+h+'</div></div>';document.documentElement.appendChild(d)}
+  function fmt(d){try{return new Date(d).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch(e){return d||''}}
+  function dkey(d){var x=new Date(d);return x.getFullYear()+'-'+('0'+(x.getMonth()+1)).slice(-2)+'-'+('0'+x.getDate()).slice(-2)}
+  async function load(){
+    var a=await APP.sb.from('profiles').select('*').order('created_at',{ascending:false}).limit(1000);
+    var b=await APP.sb.from('card_logs').select('*').order('created_at',{ascending:false}).limit(5000);
+    if(a.error||b.error)throw (a.error||b.error);
+    S.profiles=a.data||[];S.logs=b.data||[];
+  }
+  function stats(){
+    var P=S.profiles,L=S.logs,now=new Date(),td=dkey(now),mo=td.slice(0,7);
+    var cnt=function(s){return P.filter(function(p){return p.status===s}).length};
+    var today=L.filter(function(l){return dkey(l.created_at)===td}).length;
+    var month=L.filter(function(l){return dkey(l.created_at).slice(0,7)===mo}).length;
+    var items=[['Total users',P.length,''],['Pending approval',cnt('pending'),cnt('pending')?'warn':''],['Approved',cnt('approved'),''],['Blocked',cnt('blocked'),''],['Cards aaj',today,''],['Cards is mahine',month,''],['Cards total',L.length,'']];
+    $('stats').innerHTML=items.map(function(i){return '<div class="stat '+i[2]+'"><div class="n">'+i[1]+'</div><div class="l">'+i[0]+'</div></div>'}).join('');
+    var pb=$('pendBadge');pb.textContent=cnt('pending');pb.style.display=cnt('pending')?'inline-block':'none';
+  }
+  function users(){
+    var st=$('uStatus').value,q=$('uSearch').value.trim().toLowerCase();
+    var per={};S.logs.forEach(function(l){per[l.user_id]=(per[l.user_id]||0)+1});
+    var rows=S.profiles.filter(function(p){
+      if(st&&p.status!==st)return false;
+      if(!q)return true;
+      return [p.full_name,p.shop_name,p.mobile,p.email].join(' ').toLowerCase().indexOf(q)>=0;
+    });
+    if(!rows.length){$('uBody').innerHTML='<tr><td colspan="9" class="empty">Koi user nahi mila.</td></tr>';return}
+    $('uBody').innerHTML=rows.map(function(p){
+      var self=p.id===S.me.id,id=E(p.id),btns='';
+      if(p.status!=='approved')btns+='<button class="ok" data-act="approve" data-id="'+id+'">Approve</button>';
+      if(p.status!=='blocked')btns+='<button class="no" data-act="block" data-id="'+id+'"'+(self?' disabled':'')+'>Block</button>';
+      btns+=p.role==='admin'
+        ?'<button class="mid" data-act="demote" data-id="'+id+'"'+(self?' disabled':'')+'>Admin hatayein</button>'
+        :'<button class="mid" data-act="promote" data-id="'+id+'">Admin banayein</button>';
+      return '<tr><td>'+E(p.full_name||'-')+(self?' <small>(aap)</small>':'')+'</td><td>'+E(p.shop_name||'-')+'</td><td>'+E(p.mobile||'-')+'</td><td>'+E(p.email||'-')+'</td><td>'+E(fmt(p.created_at))+'</td><td>'+(per[p.id]||0)+'</td><td><span class="pill '+E(p.status)+'">'+E(p.status)+'</span></td><td>'+(p.role==='admin'?'<span class="pill admin">admin</span>':'user')+'</td><td class="act">'+btns+'</td></tr>';
+    }).join('');
+  }
+  function filteredLogs(){
+    var q=$('lSearch').value.trim().toLowerCase(),f=$('lFrom').value,t=$('lTo').value,ty=$('lType').value;
+    var pm={};S.profiles.forEach(function(p){pm[p.id]=p});
+    return S.logs.filter(function(l){
+      var d=dkey(l.created_at),p=pm[l.user_id]||{};
+      if(f&&d<f)return false;if(t&&d>t)return false;if(ty&&l.action!==ty)return false;
+      if(!q)return true;
+      return [l.farmer_id,l.farmer_name,l.mobile,p.full_name,p.shop_name].join(' ').toLowerCase().indexOf(q)>=0;
+    }).map(function(l){return {l:l,p:pm[l.user_id]||{}}});
+  }
+  function logs(){
+    var rows=filteredLogs();
+    if(!rows.length){$('lBody').innerHTML='<tr><td colspan="7" class="empty">Koi record nahi mila.</td></tr>';return}
+    $('lBody').innerHTML=rows.slice(0,500).map(function(r){
+      return '<tr><td>'+E(fmt(r.l.created_at))+'</td><td>'+E(r.p.full_name||'-')+'</td><td>'+E(r.p.shop_name||'-')+'</td><td>'+E(r.l.farmer_id||'-')+'</td><td>'+E(r.l.farmer_name||'-')+'</td><td>'+E(r.l.mobile||'-')+'</td><td>'+E((r.l.action||'').toUpperCase())+'</td></tr>';
+    }).join('')+(rows.length>500?'<tr><td colspan="7" class="empty">Pehle 500 dikh rahe hain. Poora data CSV mein milega.</td></tr>':'');
+  }
+  function csv(){
+    var rows=filteredLogs(),q=function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'};
+    var out=[['Date','Operator','Shop','Farmer ID','Farmer Name','Mobile','Type'].map(q).join(',')];
+    rows.forEach(function(r){out.push([fmt(r.l.created_at),r.p.full_name,r.p.shop_name,r.l.farmer_id,r.l.farmer_name,r.l.mobile,r.l.action].map(q).join(','))});
+    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+out.join('\r\n')],{type:'text/csv;charset=utf-8'}));
+    a.download='card-log-'+dkey(new Date())+'.csv';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},2000);
+  }
+  async function refresh(){await load();stats();users();logs()}
+  async function act(kind,id){
+    var p=S.profiles.filter(function(x){return x.id===id})[0];if(!p)return;
+    var upd=null,ask='';
+    if(kind==='approve')upd={status:'approved'};
+    if(kind==='block'){upd={status:'blocked'};ask=(p.full_name||p.email)+' ko block karna hai?'}
+    if(kind==='promote'){upd={role:'admin',status:'approved'};ask=(p.full_name||p.email)+' ko ADMIN banana hai? Wo sab users ka data dekh payega.'}
+    if(kind==='demote'){upd={role:'user'};ask=(p.full_name||p.email)+' se admin hata dena hai?'}
+    if(!upd||(ask&&!confirm(ask)))return;
+    var r=await APP.sb.from('profiles').update(upd).eq('id',id);
+    if(r.error){alert('Update nahi hua: '+APP.err(r.error));return}
+    await refresh();
+  }
+  (async function(){
+    if(!APP.init()){gateMsg(APP.setupHtml);document.documentElement.classList.remove('gate');return}
+    try{
+      var p=await APP.profile();
+      if(!p){location.replace('login.html');return}
+      if(p.status!=='approved'){await APP.sb.auth.signOut();location.replace('login.html?m='+p.status);return}
+      if(p.role!=='admin'){location.replace('index.html');return}
+      S.me=p;$('me').textContent=(p.full_name||p.email)+' (admin)';
+      await refresh();
+      document.documentElement.classList.remove('gate');
+    }catch(e){
+      document.documentElement.classList.remove('gate');
+      gateMsg('<p style="color:#B3261E">Data load nahi hua: '+E(APP.err(e))+'</p><p>Supabase mein <code>supabase-setup.sql</code> chalaya hai ya nahi, jaanch lein.</p>');
+    }
+  })();
+  $('logout').addEventListener('click',function(){APP.sb.auth.signOut().then(function(){location.replace('login.html')})});
+  $('reload').addEventListener('click',function(){refresh()});
+  ['uStatus','uSearch'].forEach(function(i){$(i).addEventListener('input',users)});
+  ['lSearch','lFrom','lTo','lType'].forEach(function(i){$(i).addEventListener('input',logs)});
+  $('csv').addEventListener('click',csv);
+  document.querySelectorAll('.tabs button').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll('.tabs button').forEach(function(x){x.classList.toggle('on',x===b)});
+    $('tab-users').style.display=b.dataset.tab==='users'?'':'none';
+    $('tab-logs').style.display=b.dataset.tab==='logs'?'':'none';
+  })});
+  $('uBody').addEventListener('click',function(e){var b=e.target.closest('button[data-act]');if(b&&!b.disabled)act(b.dataset.act,b.dataset.id)});
+})();
+</script>
+</body>
+</html>
